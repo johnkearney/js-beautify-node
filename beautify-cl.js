@@ -1,89 +1,190 @@
+/*jslint adsafe: false, bitwise: true, browser: true, cap: false, css: false,
+  debug: false, devel: true, eqeqeq: true, es5: false, evil: true,
+  forin: false, fragment: false, immed: true, laxbreak: false, newcap: true,
+  nomen: false, on: false, onevar: true, passfail: false, plusplus: true,
+  regexp: false, rhino: true, safe: false, strict: true, sub: false,
+  undef: true, white: false, widget: false, windows: false */
+/*global process: false, require: false */
+"use strict";
+
 /*
 
- JS Beautifier Rhino command line script
+ JS Beautifier node command line script
 ----------------------------------------
 
-  Written by Patrick Hof, <patrickhof@web.de>
+  Ported to use node by Carlo Zottmann, <carlo@municode.de>.  Original Rhino
+  version written by Patrick Hof, <patrickhof@web.de>.
 
-  This script is to be run with Rhino[1], the JavaScript Engine written in Java,
-  on the command line.
+  This script is to be run with node[1] on the command line.
 
   Usage:
-    java org.mozilla.javascript.tools.shell.Main beautify-cl.js
+    node beautify-cl.js
 
   You are free to use this in any way you want, in case you find this useful or working for you.
 
-  [1] http://www.mozilla.org/rhino/
+  [1] http://nodejs.org/
 
 */
 
-function print_usage() {
-  print("Usage: java org.mozilla.javascript.tools.shell.Main beautify-cl.js [options] [file || URL]\n");
-  print("Reads from standard input if no file or URL is specified.\n");
-  print("Options:");
-  print("-i NUM\tIndent size (1 for TAB)");
-  print("-b\tPut braces on own line (Allman / ANSI style)");
-  print("-a\tIndent arrays");
-  print("-n\tPreserve newlines");
-  print("-p\tJSLint-pedantic mode, currently only adds space between \"function ()\"");
-  print("-d\tDirectory where the js-beautify scripts are installed.\n");
-  print("-h\tPrint this help\n");
-  print("Examples:");
-  print("beautify-cl.js -i 2 example.js");
-  print("beautify-cl.js -i 1 http://www.example.org/example.js\n");
+
+var fs = require( "fs" ),
+  options;
+
+
+function printUsage() {
+  console.info( [
+    "Usage: node beautify-cl.js [options] [file || URL]",
+    "",
+    "Reads from standard input if no file or URL is specified.",
+    "",
+    "Options:",
+    "-i NUM\tIndent size (1 for TAB)",
+    "-b\tPut braces on own line (Allman / ANSI style)",
+    "-a\tIndent arrays",
+    "-n\tPreserve newlines",
+    "-p\tJSLint-pedantic mode, currently only adds space between \"function ()\"",
+    "-d\tDirectory where the js-beautify scripts are installed.",
+    "",
+    "-h\tPrint this help",
+    "",
+    "Examples:",
+    "  beautify-cl.js -i 2 example.js",
+    "  beautify-cl.js -i 1 http://www.example.org/example.js"
+  ].join( "\n" ) );
 }
 
 
-function parse_opts(args) {
-  var options = [];
+function parseOpts(args) {
+  var options = [],
+    param;
+  
+  args.shift();
+  args.shift();
+  
   while (args.length > 0) {
     param = args.shift();
-    if (param.substr(0, 1) == '-') {
+    
+    if (param.substr(0, 1) === '-') {
       switch (param) {
-      case "-i":
-        options.indent = args.shift();
-        break;
-      case "-b":
-        options.braces_on_own_line = true;
-        break;
-      case "-a":
-        options.keep_array_indentation = false;
-        break;
-      case "-p":
-        options.jslint_pedantic = true;
-        break;
-      case "-n":
-        options.preserve_newlines = true;
-        break;
-      case "-d":
-        options.install_dir = args.shift();
-        break;
-      case "-h":
-        print_usage();
-        quit();
-        break;
-      default:
-        print("Unknown parameter: " + param + "\n");
-        print("Aborting.");
-        quit();
+        case "-i":
+          options.indent = args.shift();
+          break;
+        
+        case "-b":
+          options.braces_on_own_line = true;
+          break;
+      
+        case "-a":
+          options.keep_array_indentation = false;
+          break;
+      
+        case "-p":
+          options.jslint_pedantic = true;
+          break;
+      
+        case "-n":
+          options.preserve_newlines = true;
+          break;
+      
+        case "-d":
+          options.install_dir = args.shift();
+          break;
+      
+        case "-h":
+          printUsage();
+          process.exit();
+          break;
+
+        default:
+          console.info("Unknown parameter: " + param + "\n");
+          console.info("Aborting.");
+          process.exit();
       }
-    } else {
+    }
+    else {
       options.source = param;
     }
   }
+  
   return options;
 }
 
 
-function do_js_beautify() {
-  var js_source = '';
-  if (options.source) { // Check if source argument is an URL
-    if (options.source.substring(0, 4) === 'http') {
-      js_source = readUrl(options.source);
-    } else { // Otherwise, read from file
-      js_source = readFile(options.source);
+function beautifySource( sourceFile ) {
+  var line,
+    resultLines,
+    indent_size = options.indent ? options.indent : 2,
+    preserve_newlines = options.preserve_newlines ? options.preserve_newlines : false,
+    indent_char = ( indent_size === 1 ) ? "\t" : " ",
+    result = {};
+  
+  sourceFile = sourceFile.replace( /^\s+/, "" );
+  
+  if ( sourceFile && sourceFile[0] === "<" ) {
+    result.output = style_html( sourceFile, indent_size, indent_char, 80 );
+  }
+  else {
+    result.output = js_beautify( sourceFile, {
+      indent_size: indent_size,
+      indent_char: indent_char,
+      preserve_newlines: preserve_newlines,
+      space_after_anon_function: options.jslint_pedantic,
+      keep_array_indentation: options.keep_array_indentation,
+      braces_on_own_line: options.braces_on_own_line
+    });
+  }
+  
+  result.lines = result.output.split( "\n" );
+  result.maxIndex = result.lines.length - 1;
+  result.lines.forEach( function( line, index, array ) {
+    console.info( line );
+    if ( result.maxIndex === index ) {
+      setTimeout( function() { 
+        process.exit();
+      }, 250 );
     }
-  } else { // read from stdin
+  });
+}
+
+
+function getSourceFile() {
+  var fs = require( "fs" ),
+    http = require( "http" ),
+    url = require( "url" ),
+    req,
+    sourceFile = "",
+    sURL;
+
+  if ( options.source ) {
+    if ( options.source.substring( 0, 4 ) === "http" ) {
+      // remote file
+      sURL = url.parse( options.source );
+      req = http
+        .createClient( ( sURL.port || 80 ), sURL.host )
+        .request( "GET", sURL.pathname + ( sURL.search || "" ), { host: sURL.hostname });
+      req.end();
+      req.on( "response", function( response ) {
+        response.setEncoding( "utf8" );
+        response
+          .on( "data", function( chunk ) {
+            sourceFile += chunk;
+          })
+          .on( "end", function() {
+            beautifySource( sourceFile );
+          });
+
+        // TODO: error handling
+      });
+    }
+    else {
+      // local file
+      sourceFile = fs.readFileSync( options.source, "utf-8" );
+      beautifySource( sourceFile );
+    }
+  }
+  else {
+    // TODO: read STDIN
+    /*
     importPackage(java.io);
     importPackage(java.lang);
     var stdin = new BufferedReader(new InputStreamReader(System['in']));
@@ -93,45 +194,30 @@ function do_js_beautify() {
     while (stdin.ready()) {
       lines.push(stdin.readLine());
     }
-    if (lines.length) js_source = lines.join("\n");
+    
+    if (lines.length) {
+      sourceFile = lines.join("\n");
+    }
 
     if (!lines.length) {
-      print_usage();
-      quit();
+      printUsage();
+      process.exit();
     }
+    */
   }
-  js_source = js_source.replace(/^\s+/, '');
-  var indent_size = options.indent ? options.indent : 2;
-  var preserve_newlines = options.preserve_newlines ? options.preserve_newlines : false;
-  var indent_char = ' ';
-  var result;
-  if (indent_size == 1) {
-    indent_char = '\t';
-  }
-  if (js_source && js_source[0] === '<') {
-    result = style_html(js_source, indent_size, indent_char, 80);
-  } else {
-    result = js_beautify(js_source, {
-      indent_size: indent_size,
-      indent_char: indent_char,
-      preserve_newlines: preserve_newlines,
-      space_after_anon_function: options.jslint_pedantic,
-      keep_array_indentation: options.keep_array_indentation,
-      braces_on_own_line: options.braces_on_own_line
-    });
-  }
-  return result;
 }
 
 
-options = parse_opts(arguments);
+options = parseOpts( process.argv );
 
 if (options.install_dir) {
-  load(options.install_dir + "/beautify.js");
-  load(options.install_dir + "/beautify-html.js");
-} else {
-  load("beautify.js");
-  load("beautify-html.js");
+  eval( fs.readFileSync( options.install_dir + "/beautify.js", "utf-8" ) );
+  eval( fs.readFileSync( options.install_dir + "/beautify-html.js", "utf-8" ) );
+}
+else {
+  eval( fs.readFileSync("beautify.js", "utf-8") );
+  eval( fs.readFileSync("beautify-html.js", "utf-8") );
 }
 
-print(do_js_beautify());
+getSourceFile();
+
