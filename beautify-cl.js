@@ -26,198 +26,196 @@
 
 */
 
-
-var fs = require( "fs" ),
-  options;
-
-
-function printUsage() {
-  console.info( [
-    "Usage: node beautify-cl.js [options] [file || URL]",
-    "",
-    "Reads from standard input if no file or URL is specified.",
-    "",
-    "Options:",
-    "-i NUM\tIndent size (1 for TAB)",
-    "-b\tPut braces on own line (Allman / ANSI style)",
-    "-a\tIndent arrays",
-    "-n\tPreserve newlines",
-    "-p\tJSLint-pedantic mode, currently only adds space between \"function ()\"",
-    "-d\tDirectory where the js-beautify scripts are installed.",
-    "",
-    "-h\tPrint this help",
-    "",
-    "Examples:",
-    "  beautify-cl.js -i 2 example.js",
-    "  beautify-cl.js -i 1 http://www.example.org/example.js"
-  ].join( "\n" ) );
-}
-
-
-function parseOpts(args) {
-  var options = [],
-    param;
+( function() {
   
-  args.shift();
-  args.shift();
-  
-  while (args.length > 0) {
-    param = args.shift();
+  var fs = require( "fs" ),
+    sys = require( "sys" ),
+    options,
+    result = "";
+
+
+  function printUsage() {
+    sys.puts( [
+      "Usage: node beautify-cl.js [options] [file || URL]",
+      "",
+      "Reads from standard input if no file or URL is specified.",
+      "",
+      "Options:",
+      "-i NUM\tIndent size (1 for TAB)",
+      "-b\tPut braces on own line (Allman / ANSI style)",
+      "-a\tIndent arrays",
+      "-n\tPreserve newlines",
+      "-p\tJSLint-pedantic mode, currently only adds space between \"function ()\"",
+      "-d\tDirectory where the js-beautify scripts are installed.",
+      "",
+      "-h\tPrint this help",
+      "",
+      "Examples:",
+      "  beautify-cl.js -i 2 example.js",
+      "  beautify-cl.js -i 1 http://www.example.org/example.js"
+    ].join( "\n" ) );
+  }
+
+
+  function parseOpts(args) {
+    var options = [],
+      param;
+
+    args.shift();
+    args.shift();
+
+    while (args.length > 0) {
+      param = args.shift();
+
+      if (param.substr(0, 1) === '-') {
+        switch (param) {
+          case "-i":
+            options.indent = args.shift();
+            break;
+
+          case "-b":
+            options.braces_on_own_line = true;
+            break;
+
+          case "-a":
+            options.keep_array_indentation = false;
+            break;
+
+          case "-p":
+            options.jslint_pedantic = true;
+            break;
+
+          case "-n":
+            options.preserve_newlines = true;
+            break;
+
+          case "-d":
+            options.install_dir = args.shift();
+            break;
+
+          case "-h":
+            printUsage();
+            process.exit();
+            break;
+
+          default:
+            console.info("Unknown parameter: " + param + "\n");
+            console.info("Aborting.");
+            process.exit();
+        }
+      }
+      else {
+        options.source = param;
+      }
+    }
+
+    return options;
+  }
+
+
+  function beautifySource( sourceFile ) {
+    var line,
+      indent_size = options.indent ? options.indent : 2,
+      preserve_newlines = options.preserve_newlines ? options.preserve_newlines : false,
+      indent_char = ( indent_size === 1 ) ? "\t" : " ";
+
+    sourceFile = sourceFile.replace( /^\s+/, "" );
+
+    if ( sourceFile && sourceFile[0] === "<" ) {
+      result = style_html( sourceFile, indent_size, indent_char, 80 );
+    }
+    else {
+      result = js_beautify( sourceFile, {
+        indent_size: indent_size,
+        indent_char: indent_char,
+        preserve_newlines: preserve_newlines,
+        space_after_anon_function: options.jslint_pedantic,
+        keep_array_indentation: options.keep_array_indentation,
+        braces_on_own_line: options.braces_on_own_line
+      });
+    }
+
+    // Trying to output `result` in one go had funny side effects on OSX.
+    // Writing to a file would work fine, but the raw console output (printed
+    // on screen) was truncated.  Really weird.  So, line by line it is.
     
-    if (param.substr(0, 1) === '-') {
-      switch (param) {
-        case "-i":
-          options.indent = args.shift();
-          break;
-        
-        case "-b":
-          options.braces_on_own_line = true;
-          break;
-      
-        case "-a":
-          options.keep_array_indentation = false;
-          break;
-      
-        case "-p":
-          options.jslint_pedantic = true;
-          break;
-      
-        case "-n":
-          options.preserve_newlines = true;
-          break;
-      
-        case "-d":
-          options.install_dir = args.shift();
-          break;
-      
-        case "-h":
-          printUsage();
-          process.exit();
-          break;
+    result.split( "\n" ).forEach( function( line, index, array ) {
+      sys.puts( line );
+    });
+  }
 
-        default:
-          console.info("Unknown parameter: " + param + "\n");
-          console.info("Aborting.");
-          process.exit();
+
+  function getSourceFile() {
+    var http = require( "http" ),
+      url = require( "url" ),
+      req,
+      sourceFile = "",
+      sURL;
+
+    if ( options.source ) {
+      if ( options.source.substring( 0, 4 ) === "http" ) {
+        // remote file
+        sURL = url.parse( options.source );
+        req = http
+          .createClient( ( sURL.port || 80 ), sURL.host )
+          .request( "GET", sURL.pathname + ( sURL.search || "" ), { host: sURL.hostname });
+        req.end();
+        req.on( "response", function( response ) {
+          response.setEncoding( "utf8" );
+          response
+            .on( "data", function( chunk ) {
+              sourceFile += chunk;
+            })
+            .on( "end", function() {
+              beautifySource( sourceFile );
+            });
+
+          // TODO: error handling
+        });
+      }
+      else {
+        // local file
+        sourceFile = fs.readFileSync( options.source, "utf-8" );
+        beautifySource( sourceFile );
       }
     }
     else {
-      options.source = param;
+      // TODO: read STDIN
+      /*
+      importPackage(java.io);
+      importPackage(java.lang);
+      var stdin = new BufferedReader(new InputStreamReader(System['in']));
+      var lines = [];
+
+      // read stdin buffer until EOF
+      while (stdin.ready()) {
+        lines.push(stdin.readLine());
+      }
+
+      if (lines.length) {
+        sourceFile = lines.join("\n");
+      }
+
+      if (!lines.length) {
+        printUsage();
+        process.exit( 1 );
+      }
+      */
     }
   }
-  
-  return options;
-}
 
 
-function beautifySource( sourceFile ) {
-  var line,
-    resultLines,
-    indent_size = options.indent ? options.indent : 2,
-    preserve_newlines = options.preserve_newlines ? options.preserve_newlines : false,
-    indent_char = ( indent_size === 1 ) ? "\t" : " ",
-    result = {};
-  
-  sourceFile = sourceFile.replace( /^\s+/, "" );
-  
-  if ( sourceFile && sourceFile[0] === "<" ) {
-    result.output = style_html( sourceFile, indent_size, indent_char, 80 );
-  }
-  else {
-    result.output = js_beautify( sourceFile, {
-      indent_size: indent_size,
-      indent_char: indent_char,
-      preserve_newlines: preserve_newlines,
-      space_after_anon_function: options.jslint_pedantic,
-      keep_array_indentation: options.keep_array_indentation,
-      braces_on_own_line: options.braces_on_own_line
-    });
-  }
-  
-  result.lines = result.output.split( "\n" );
-  result.maxIndex = result.lines.length - 1;
-  result.lines.forEach( function( line, index, array ) {
-    console.info( line );
-    if ( result.maxIndex === index ) {
-      setTimeout( function() { 
-        process.exit();
-      }, 250 );
-    }
-  });
-}
+  options = parseOpts( process.argv );
 
-
-function getSourceFile() {
-  var fs = require( "fs" ),
-    http = require( "http" ),
-    url = require( "url" ),
-    req,
-    sourceFile = "",
-    sURL;
-
-  if ( options.source ) {
-    if ( options.source.substring( 0, 4 ) === "http" ) {
-      // remote file
-      sURL = url.parse( options.source );
-      req = http
-        .createClient( ( sURL.port || 80 ), sURL.host )
-        .request( "GET", sURL.pathname + ( sURL.search || "" ), { host: sURL.hostname });
-      req.end();
-      req.on( "response", function( response ) {
-        response.setEncoding( "utf8" );
-        response
-          .on( "data", function( chunk ) {
-            sourceFile += chunk;
-          })
-          .on( "end", function() {
-            beautifySource( sourceFile );
-          });
-
-        // TODO: error handling
-      });
-    }
-    else {
-      // local file
-      sourceFile = fs.readFileSync( options.source, "utf-8" );
-      beautifySource( sourceFile );
-    }
+  if (options.install_dir) {
+    eval( fs.readFileSync( options.install_dir + "/beautify.js", "utf-8" ) );
+    eval( fs.readFileSync( options.install_dir + "/beautify-html.js", "utf-8" ) );
   }
   else {
-    // TODO: read STDIN
-    /*
-    importPackage(java.io);
-    importPackage(java.lang);
-    var stdin = new BufferedReader(new InputStreamReader(System['in']));
-    var lines = [];
-
-    // read stdin buffer until EOF
-    while (stdin.ready()) {
-      lines.push(stdin.readLine());
-    }
-    
-    if (lines.length) {
-      sourceFile = lines.join("\n");
-    }
-
-    if (!lines.length) {
-      printUsage();
-      process.exit();
-    }
-    */
+    eval( fs.readFileSync("beautify.js", "utf-8") );
+    eval( fs.readFileSync("beautify-html.js", "utf-8") );
   }
-}
 
-
-options = parseOpts( process.argv );
-
-if (options.install_dir) {
-  eval( fs.readFileSync( options.install_dir + "/beautify.js", "utf-8" ) );
-  eval( fs.readFileSync( options.install_dir + "/beautify-html.js", "utf-8" ) );
-}
-else {
-  eval( fs.readFileSync("beautify.js", "utf-8") );
-  eval( fs.readFileSync("beautify-html.js", "utf-8") );
-}
-
-getSourceFile();
-
+  getSourceFile();
+  
+}() );
