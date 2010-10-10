@@ -26,12 +26,17 @@
 
 */
 
+
+require.paths.unshift( "./" );
+
+
 ( function() {
   
   var fs = require( "fs" ),
     sys = require( "sys" ),
     http = require( "http" ),
     url = require( "url" ),
+    jsb = require( "beautify" ),
     options,
     result = "";
 
@@ -48,7 +53,6 @@
       "-a\tIndent arrays",
       "-n\tPreserve newlines",
       "-p\tJSLint-pedantic mode, currently only adds space between \"function ()\"",
-      "-d\tDirectory where the js-beautify scripts are installed.",
       "",
       "-h\tPrint this help",
       "",
@@ -65,6 +69,11 @@
 
     args.shift();
     args.shift();
+
+    if ( args.length === 0 ) {
+      printUsage();
+      process.exit( 1 );
+    }
 
     while (args.length > 0) {
       param = args.shift();
@@ -91,10 +100,6 @@
             options.preserve_newlines = true;
             break;
 
-          case "-d":
-            options.install_dir = args.shift();
-            break;
-
           case "-h":
             printUsage();
             process.exit();
@@ -110,7 +115,7 @@
         options.source = param;
       }
     }
-
+    
     return options;
   }
 
@@ -127,7 +132,7 @@
       process.exit( 0 );
     }
     else {
-      result = js_beautify( sourceFile, {
+      result = jsb.js_beautify( sourceFile, {
         indent_size: indent_size,
         indent_char: indent_char,
         preserve_newlines: !!options.preserve_newlines,
@@ -206,14 +211,6 @@
 
 
   options = parseOpts( process.argv );
-
-  if (options.install_dir) {
-    eval( fs.readFileSync( options.install_dir + "/beautify.js", "utf-8" ) );
-  }
-  else {
-    eval( fs.readFileSync("beautify.js", "utf-8") );
-  }
-
   getSourceFile();
   
 }() );
