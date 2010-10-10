@@ -9,20 +9,21 @@
 
 /*
 
- JS Beautifier node command line script
-----------------------------------------
+### JS Beautifier node command line script
 
-  Ported to use node by Carlo Zottmann, <carlo@municode.de>.  Original Rhino
-  version written by Patrick Hof, <patrickhof@web.de>.
+Ported to use node by Carlo Zottmann, <carlo@municode.de>.  Original Rhino
+version written by Patrick Hof, <patrickhof@web.de>.
 
-  This script is to be run with node[1] on the command line.
+This script is to be run with node[^1] on the command line.
 
-  Usage:
-    node beautify-cl.js
+Usage:
 
-  You are free to use this in any way you want, in case you find this useful or working for you.
+    node beautify-node.js
 
-  [1] http://nodejs.org/
+You are free to use this in any way you want, in case you find this useful
+or working for you.
+
+[^1]: http://nodejs.org/
 
 */
 
@@ -43,7 +44,7 @@ require.paths.unshift( "./" );
 
   function printUsage() {
     sys.puts( [
-      "Usage: node beautify-cl.js [options] [file || URL]",
+      "Usage: node beautify-node.js [options] [file || URL || STDIN]",
       "",
       "Reads from standard input if no file or URL is specified.",
       "",
@@ -57,29 +58,25 @@ require.paths.unshift( "./" );
       "-h\tPrint this help",
       "",
       "Examples:",
-      "  beautify-cl.js -i 2 example.js",
-      "  beautify-cl.js -i 1 http://www.example.org/example.js"
+      "  beautify-node.js -i 2 example.js",
+      "  beautify-node.js -i 1 http://www.example.org/example.js",
+      "  beautify-node.js < example.js"
     ].join( "\n" ) );
   }
 
 
-  function parseOpts(args) {
+  function parseOpts( args ) {
     var options = [],
       param;
 
     args.shift();
     args.shift();
 
-    if ( args.length === 0 ) {
-      printUsage();
-      process.exit( 1 );
-    }
-
-    while (args.length > 0) {
+    while ( args.length > 0 ) {
       param = args.shift();
 
-      if (param.substr(0, 1) === '-') {
-        switch (param) {
+      if ( param.substr( 0, 1 ) === "-" ) {
+        switch ( param ) {
           case "-i":
             options.indent = args.shift();
             break;
@@ -106,9 +103,8 @@ require.paths.unshift( "./" );
             break;
 
           default:
-            console.info("Unknown parameter: " + param + "\n");
-            console.info("Aborting.");
-            process.exit();
+            console.error( "Unknown parameter: " + param + "\nAborting." );
+            process.exit( 0 );
         }
       }
       else {
@@ -155,10 +151,12 @@ require.paths.unshift( "./" );
   function getSourceFile() {
     var req,
       sourceFile = "",
-      sURL;
+      sURL,
+      stdin;
 
     if ( options.source ) {
       if ( options.source.substring( 0, 4 ) === "http" ) {
+
         // remote file
         sURL = url.parse( options.source );
         req = http
@@ -179,36 +177,39 @@ require.paths.unshift( "./" );
         });
       }
       else {
+
         // local file
         sourceFile = fs.readFileSync( options.source, "utf-8" );
         beautifySource( sourceFile );
       }
     }
     else {
-      // TODO: read STDIN
-      /*
-      importPackage(java.io);
-      importPackage(java.lang);
-      var stdin = new BufferedReader(new InputStreamReader(System['in']));
-      var lines = [];
 
-      // read stdin buffer until EOF
-      while (stdin.ready()) {
-        lines.push(stdin.readLine());
-      }
+      // I'll be honest: I don't know yet how to check whether there is any
+      // STDIN or not.  When the script is called w/o parameters, it should
+      // print out usage information; when there's STDIN input, it should
+      // process that.  So I figured that when there's no such input within 
+      // 25ms, there won't be anything later on, either.  If you know of a 
+      // cleaner way to do this, please let me know.  :)  --Carlo
+      
+      setTimeout( function() {
+        if ( sourceFile.length === 0 ) {
+          printUsage();
+          process.exit( 1 );
+        }
+      }, 25 );
 
-      if (lines.length) {
-        sourceFile = lines.join("\n");
-      }
-
-      if (!lines.length) {
-        printUsage();
-        process.exit( 1 );
-      }
-      */
+      stdin = process.openStdin();
+      stdin.setEncoding( "utf8" );
+      stdin
+        .on( "data", function( chunk ) {
+          sourceFile += chunk;
+        })
+        .on( "end", function() {          
+          beautifySource( sourceFile );
+        });
     }
   }
-
 
   options = parseOpts( process.argv );
   getSourceFile();
