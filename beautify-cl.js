@@ -30,6 +30,8 @@
   
   var fs = require( "fs" ),
     sys = require( "sys" ),
+    http = require( "http" ),
+    url = require( "url" ),
     options,
     result = "";
 
@@ -115,20 +117,20 @@
 
   function beautifySource( sourceFile ) {
     var line,
-      indent_size = options.indent ? options.indent : 2,
-      preserve_newlines = options.preserve_newlines ? options.preserve_newlines : false,
+      indent_size = options.indent || 2,
       indent_char = ( indent_size === 1 ) ? "\t" : " ";
 
     sourceFile = sourceFile.replace( /^\s+/, "" );
 
     if ( sourceFile && sourceFile[0] === "<" ) {
-      result = style_html( sourceFile, indent_size, indent_char, 80 );
+      sys.puts( "HTML files not supported." );
+      process.exit( 0 );
     }
     else {
       result = js_beautify( sourceFile, {
         indent_size: indent_size,
         indent_char: indent_char,
-        preserve_newlines: preserve_newlines,
+        preserve_newlines: !!options.preserve_newlines,
         space_after_anon_function: options.jslint_pedantic,
         keep_array_indentation: options.keep_array_indentation,
         braces_on_own_line: options.braces_on_own_line
@@ -146,9 +148,7 @@
 
 
   function getSourceFile() {
-    var http = require( "http" ),
-      url = require( "url" ),
-      req,
+    var req,
       sourceFile = "",
       sURL;
 
@@ -209,11 +209,9 @@
 
   if (options.install_dir) {
     eval( fs.readFileSync( options.install_dir + "/beautify.js", "utf-8" ) );
-    eval( fs.readFileSync( options.install_dir + "/beautify-html.js", "utf-8" ) );
   }
   else {
     eval( fs.readFileSync("beautify.js", "utf-8") );
-    eval( fs.readFileSync("beautify-html.js", "utf-8") );
   }
 
   getSourceFile();
