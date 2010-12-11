@@ -78,7 +78,7 @@ require.paths.unshift( "./" );
       if ( param.substr( 0, 1 ) === "-" ) {
         switch ( param ) {
           case "-i":
-            options.indent = args.shift();
+            options.indent = parseInt(args.shift());
             break;
 
           case "-b":
